@@ -1,3 +1,4 @@
+
 name: Centralized Maven CI
 
 on:
@@ -14,9 +15,12 @@ on:
     secrets:
       SONAR_TOKEN:
         required: true
+      GH_PACKAGES_TOKEN:
+        required: true
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   build-test-analyze:
@@ -35,9 +39,43 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: GH_PACKAGES_TOKEN
 
       - name: Build and test with coverage
-        run: mvn --batch-mode --no-transfer-progress clean verify
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'EOF'
+          <settings xmlns="http://maven.apache.org/SETTINGS/1.2.0">
+            <servers>
+              <server>
+                <id>github</id>
+                <username>${env.GITHUB_ACTOR}</username>
+                <password>${env.GH_PACKAGES_TOKEN}</password>
+              </server>
+            </servers>
+            <profiles>
+              <profile>
+                <id>github-packages</id>
+                <repositories>
+                  <repository>
+                    <id>github</id>
+                    <url>https://maven.pkg.github.com/5ync-shoploc/shoploc-parent</url>
+                  </repository>
+                </repositories>
+              </profile>
+            </profiles>
+            <activeProfiles>
+              <activeProfile>github-packages</activeProfile>
+            </activeProfiles>
+          </settings>
+          EOF
+
+          mvn --batch-mode --no-transfer-progress clean verify
 
       - name: Check coverage report
         shell: bash
